@@ -1,0 +1,37 @@
+<dependencies>
+    <!-- Spring Boot Starter Web (for Controllers/REST APIs) -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- Spring Boot Starter Data JPA (for persistence/ORM) -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+
+    <!-- PostgreSQL Driver -->
+    <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+    
+    <!-- Lombok (Optional, but highly recommended for auto-generating getters/setters/constructors) -->
+    <!-- If you don't use Lombok, you must manually write all getters/setters in ReportFile.java -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+
+    <!-- H2 Database (Optional: Good for development/testing if you don't want to run PostgreSQL locally yet) -->
+    <!--
+    <dependency>
+        <groupId>com.h2database</groupId>
+        <artifactId>h2</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+    -->
+</dependencies>
