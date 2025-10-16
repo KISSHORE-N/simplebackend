@@ -1,8 +1,9 @@
-// src/utils/api.js (LIVE IMPLEMENTATION)
+// src/utils/api.js
 
-// Point to the root of your Java backend API
-// Assuming it's running on the same host but port 8080 (common for Spring Boot)
-// NOTE: If your frontend and backend run on different ports, you must specify the backend port here.
+// --- LIVE IMPLEMENTATION: Connects to Java/Spring Boot Backend ---
+
+// NOTE: Ensure your Java backend is running on port 8080. 
+// If your backend runs on a different port (e.g., 8090), change the port here.
 const BASE_URL = 'http://localhost:8080/api/ops'; 
 
 const fetchAPI = async (endpoint, method = 'GET', data = null) => {
@@ -15,25 +16,33 @@ const fetchAPI = async (endpoint, method = 'GET', data = null) => {
         },
     };
 
+    // If method is POST or PUT, include the request body
     if (data && method !== 'GET') {
         config.body = JSON.stringify(data);
     }
     
     try {
+        console.log(`[LIVE API] ${method} ${url}`);
+        
         const response = await fetch(url, config);
 
         if (!response.ok) {
-            // Throw error for bad HTTP statuses (4xx, 5xx)
-            throw new Error(`API call failed with status: ${response.status}`);
+            // Log the error and throw an exception for the UI to catch
+            const errorText = await response.text();
+            console.error(`API Error Response: ${errorText}`);
+            throw new Error(`API call to ${endpoint} failed with status: ${response.status}`);
         }
         
-        // Return raw JSON response data (which is what your components expect)
-        return response.json(); 
+        // Return JSON response data from the Java controller
+        // Note: Java returns an empty body for some successful POSTs (e.g., /transfer)
+        const text = await response.text();
+        return text ? JSON.parse(text) : { success: true }; 
 
     } catch (error) {
-        console.error("Network or API parsing error:", error);
-        // Throw an error or return a structure that alerts the UI
-        return { success: false, error: error.message };
+        console.error("Network or API execution error:", error);
+        // Return empty array for GETs to prevent UI crash, or throw
+        if (method === 'GET') return []; 
+        throw error;
     }
 };
 
