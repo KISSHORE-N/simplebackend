@@ -1,9 +1,7 @@
 // src/utils/api.js
 
-// --- LIVE IMPLEMENTATION: Connects to Java/Spring Boot Backend ---
-
 // NOTE: Ensure your Java backend is running on port 8080. 
-// If your backend runs on a different port (e.g., 8090), change the port here.
+// Change the port if your Spring Boot app is using a different one (e.g., 8090).
 const BASE_URL = 'http://localhost:8080/api/ops'; 
 
 const fetchAPI = async (endpoint, method = 'GET', data = null) => {
@@ -13,10 +11,10 @@ const fetchAPI = async (endpoint, method = 'GET', data = null) => {
         method: method,
         headers: {
             'Content-Type': 'application/json',
+            // Note: If you face CORS issues, ensure your Spring Boot controller has @CrossOrigin
         },
     };
 
-    // If method is POST or PUT, include the request body
     if (data && method !== 'GET') {
         config.body = JSON.stringify(data);
     }
@@ -27,20 +25,24 @@ const fetchAPI = async (endpoint, method = 'GET', data = null) => {
         const response = await fetch(url, config);
 
         if (!response.ok) {
-            // Log the error and throw an exception for the UI to catch
             const errorText = await response.text();
-            console.error(`API Error Response: ${errorText}`);
-            throw new Error(`API call to ${endpoint} failed with status: ${response.status}`);
+            console.error(`API FAILED: ${url} | Status: ${response.status}`, errorText);
+            // Throwing an error here ensures the catch block in OpsPage.js is hit
+            throw new Error(`Server error: ${response.status} ${response.statusText}`);
         }
         
-        // Return JSON response data from the Java controller
-        // Note: Java returns an empty body for some successful POSTs (e.g., /transfer)
-        const text = await response.text();
-        return text ? JSON.parse(text) : { success: true }; 
+        // Handle responses that might have empty bodies (like successful POSTs)
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+            return response.json();
+        }
+        
+        // Return a successful dummy object if no content is returned (e.g., for POST requests)
+        return { success: true }; 
 
     } catch (error) {
-        console.error("Network or API execution error:", error);
-        // Return empty array for GETs to prevent UI crash, or throw
+        console.error(`Network/Execution Error for ${url}:`, error);
+        // On error, return an empty array for GETs to prevent UI crash
         if (method === 'GET') return []; 
         throw error;
     }
