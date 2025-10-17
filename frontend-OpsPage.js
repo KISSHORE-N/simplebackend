@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import './OpsPage.css'; 
 import { useNavigate } from 'react-router-dom';
-import fetchAPI from '../../utils/api'; // Import the robust fetch helper
+// Ensure this path points to your live fetch implementation:
+import fetchAPI from '../../utils/api'; 
 
 // --- Static User Info for the Header ---
 const opsUser = {
@@ -9,7 +10,7 @@ const opsUser = {
     email: 'admin@standardchartered.com',
 };
 
-// --- Icon Components (Remains the same) ---
+// --- Icon Components (Locally defined) ---
 const SearchIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
 );
@@ -46,28 +47,27 @@ function OpsPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [notifications, setNotifications] = useState([]); 
     const [showNotifications, setShowNotifications] = useState(false);
-    const [isLoading, setIsLoading] = useState(true); // New loading state
+    const [isLoading, setIsLoading] = useState(true);
 
     // Helper to map statuses from JAVA_CASE (e.g., READY_TO_TRANSFER) to css-case (ready-to-transfer)
     const formatStatus = (status) => {
         return status ? status.toLowerCase().replace(/_/g, '-') : 'unknown';
     };
 
-    // --- FETCH FUNCTIONS ---
-    
+    // --- DATA FETCHING ---
+
     const fetchTransferQueue = useCallback(async () => {
         setIsLoading(true);
         const fetchedFiles = await fetchAPI('/queue', 'GET'); 
-        setFiles(fetchedFiles);
+        setFiles(Array.isArray(fetchedFiles) ? fetchedFiles : []);
         setIsLoading(false);
     }, []);
 
     const fetchNotifications = useCallback(async () => {
         const fetchedNotifications = await fetchAPI('/notifications', 'GET');
-        setNotifications(fetchedNotifications); 
+        setNotifications(Array.isArray(fetchedNotifications) ? fetchedNotifications : []); 
     }, []);
 
-    // Initial data load effect
     useEffect(() => {
         fetchTransferQueue();
         fetchNotifications();
@@ -85,19 +85,18 @@ function OpsPage() {
         navigate('/');
     };
 
-    // ACTION 1: Initiate Transfer (Moves status to Processing/Transferred)
+    // ACTION 1: Initiate Transfer (Calls Java endpoint to change status to TRANSFERRED/LOCAL)
     const handleTransfer = async (fileId) => {
         // OPTIMISTIC UPDATE
         setFiles(prevFiles => prevFiles.map(file => 
             file.id === fileId ? { ...file, status: 'PROCESSING' } : file
         ));
         
-        // POST /api/ops/transfer/{fileId}
         try {
             const response = await fetchAPI(`/transfer/${fileId}`, 'POST');
 
             if (response.success) {
-                // Refetch the queue to get the final 'Transferred' status from the server
+                // Refresh queue to get final status from server
                 fetchTransferQueue();
             } else {
                 console.error("Transfer failed on server.");
@@ -109,9 +108,8 @@ function OpsPage() {
         }
     };
     
-    // ACTION 2: Get File (Acknowledges notification and adds file to queue)
+    // ACTION 2: Get File (Calls Java endpoint to change status from NEW to READY_TO_TRANSFER)
     const handleGetFile = async (notification) => {
-        // POST /api/ops/acknowledge/{fileId}
         try {
             const response = await fetchAPI(`/acknowledge/${notification.id}`, 'POST');
 
