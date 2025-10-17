@@ -1,36 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import './OpsPage.css'; 
 import { useNavigate } from 'react-router-dom';
-
-// --- API Helper (MOCK for frontend testing) ---
-const fetchAPI = async (endpoint, method = 'GET', data = null) => {
-    console.log(`[API CALL] ${method} /api/ops${endpoint}`);
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // --- SIMULATED RESPONSES ---
-    if (method === 'GET') {
-        if (endpoint === '/notifications') {
-            // New files waiting for Ops acknowledgment
-            return [
-                { id: 'NOTIF-1', fileName: 'Compliance_Audit_Q4.pdf', destinationGroup: 'Compliance_Data', remotePath: '/remote/src/NOTIF-1.pdf', status: 'NEW' },
-                { id: 'NOTIF-2', fileName: 'HR_Budget_2025.pdf', destinationGroup: 'HR_Metrics', remotePath: '/remote/src/NOTIF-2.pdf', status: 'NEW' },
-            ];
-        }
-        if (endpoint === '/queue') {
-            // Files currently in the processing queue
-            return [
-                { id: 'QUEUE-1', fileName: 'Finance_Risk_Log.pdf', destinationGroup: 'Finance_Reports', status: 'READY_TO_TRANSFER', isTransferred: false },
-            ];
-        }
-    }
-    if (method === 'POST') {
-        return { success: true, updatedFile: { status: 'TRANSFERRED', id: endpoint.split('/').pop() } };
-    }
-    
-    return { success: true }; 
-};
-
+import fetchAPI from '../../utils/api'; // Import the robust fetch helper
 
 // --- Static User Info for the Header ---
 const opsUser = {
@@ -73,24 +44,30 @@ function OpsPage() {
     
     const [files, setFiles] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
-    
     const [notifications, setNotifications] = useState([]); 
     const [showNotifications, setShowNotifications] = useState(false);
+    const [isLoading, setIsLoading] = useState(true); // New loading state
 
-    // --- FETCH HANDLERS ---
+    // Helper to map statuses from JAVA_CASE (e.g., READY_TO_TRANSFER) to css-case (ready-to-transfer)
+    const formatStatus = (status) => {
+        return status ? status.toLowerCase().replace(/_/g, '-') : 'unknown';
+    };
+
+    // --- FETCH FUNCTIONS ---
     
     const fetchTransferQueue = useCallback(async () => {
-        // GET /api/ops/queue
+        setIsLoading(true);
         const fetchedFiles = await fetchAPI('/queue', 'GET'); 
         setFiles(fetchedFiles);
+        setIsLoading(false);
     }, []);
 
     const fetchNotifications = useCallback(async () => {
-        // GET /api/ops/notifications
         const fetchedNotifications = await fetchAPI('/notifications', 'GET');
         setNotifications(fetchedNotifications); 
     }, []);
 
+    // Initial data load effect
     useEffect(() => {
         fetchTransferQueue();
         fetchNotifications();
@@ -110,34 +87,43 @@ function OpsPage() {
 
     // ACTION 1: Initiate Transfer (Moves status to Processing/Transferred)
     const handleTransfer = async (fileId) => {
-        // OPTIMISTIC UPDATE: Set to processing instantly
+        // OPTIMISTIC UPDATE
         setFiles(prevFiles => prevFiles.map(file => 
-            file.id === fileId ? { ...file, status: 'Processing' } : file
+            file.id === fileId ? { ...file, status: 'PROCESSING' } : file
         ));
         
         // POST /api/ops/transfer/{fileId}
-        const response = await fetchAPI(`/transfer/${fileId}`, 'POST');
+        try {
+            const response = await fetchAPI(`/transfer/${fileId}`, 'POST');
 
-        if (response.success) {
-            // Refetch the queue to show the final 'Transferred' status from the server
+            if (response.success) {
+                // Refetch the queue to get the final 'Transferred' status from the server
+                fetchTransferQueue();
+            } else {
+                console.error("Transfer failed on server.");
+                fetchTransferQueue(); 
+            }
+        } catch (error) {
+            console.error("API call failed during transfer:", error);
             fetchTransferQueue();
-        } else {
-             // Rollback: If API fails, reset status (optional)
-             fetchTransferQueue();
         }
     };
     
     // ACTION 2: Get File (Acknowledges notification and adds file to queue)
     const handleGetFile = async (notification) => {
         // POST /api/ops/acknowledge/{fileId}
-        const response = await fetchAPI(`/acknowledge/${notification.id}`, 'POST');
+        try {
+            const response = await fetchAPI(`/acknowledge/${notification.id}`, 'POST');
 
-        if (response.success) {
-             // 1. Remove from local notification list immediately
-            setNotifications(prev => prev.filter(n => n.id !== notification.id));
+            if (response.success) {
+                 // 1. Remove from local notification list immediately
+                setNotifications(prev => prev.filter(n => n.id !== notification.id));
 
-            // 2. Refetch the main queue list to show the new file added by the server
-            fetchTransferQueue();
+                // 2. Refetch the main queue list to show the new file added by the server
+                fetchTransferQueue();
+            }
+        } catch (error) {
+            console.error("API call failed during acknowledgment:", error);
         }
     };
 
@@ -149,10 +135,6 @@ function OpsPage() {
             file.id.toLowerCase().includes(searchTerm.toLowerCase())
         );
     }, [files, searchTerm]);
-    
-    const formatStatus = (status) => {
-        return status.toLowerCase().replace(/_/g, '-');
-    };
 
 
     return (
@@ -237,7 +219,11 @@ function OpsPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredFiles.length > 0 ? (
+                                        {isLoading ? (
+                                            <tr>
+                                                <td colSpan="5" className="no-reports">Loading files from server...</td>
+                                            </tr>
+                                        ) : filteredFiles.length > 0 ? (
                                             filteredFiles.map((file) => (
                                                 <tr key={file.id}>
                                                     <td>{file.id}</td>
@@ -255,18 +241,18 @@ function OpsPage() {
                                                         <button 
                                                             className="action-button transfer-button"
                                                             onClick={() => handleTransfer(file.id)}
-                                                            disabled={file.status === 'Transferred' || file.status === 'Processing'}
+                                                            disabled={file.status === 'TRANSFERRED' || file.status === 'PROCESSING'}
                                                         >
-                                                            {file.status === 'Transferred' ? <CompleteIcon /> : <TransferIcon />}
-                                                            {file.status === 'Processing' ? 'Moving...' : 
-                                                             file.status === 'Transferred' ? 'Completed' : 'Transfer'}
+                                                            {file.status === 'TRANSFERRED' ? <CompleteIcon /> : <TransferIcon />}
+                                                            {file.status === 'PROCESSING' ? 'Moving...' : 
+                                                             file.status === 'TRANSFERRED' ? 'Completed' : 'Transfer'}
                                                         </button>
                                                     </td>
                                                 </tr>
                                             ))
                                         ) : (
                                             <tr>
-                                                <td colSpan="5" className="no-reports">No files found matching the criteria.</td>
+                                                <td colSpan="5" className="no-reports">No files found in the transfer queue.</td>
                                             </tr>
                                         )}
                                     </tbody>
@@ -295,7 +281,7 @@ function OpsPage() {
                                     <div className="item-details">
                                         <strong className="item-file-name">{n.fileName}</strong>
                                         <span className="item-file-id">ID: {n.id}</span>
-                                        <span className="item-destination">To: {n.destinationGroup}</span> {/* Changed to destinationGroup */}
+                                        <span className="item-destination">To: {n.destinationGroup}</span>
                                     </div>
                                     <button 
                                         className="action-button get-file-button"
